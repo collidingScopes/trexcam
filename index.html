@@ -1,0 +1,75 @@
+<!doctype html>
+<html>
+<head>
+    <title>T-Rex Cam</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" type="text/css" href="style.css">
+    <script type="text/javascript" src="dat.gui-master/build/dat.gui.min.js"></script>
+  
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Permanent+Marker&display=swap" rel="stylesheet">
+  
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  
+    <meta property="og:title" content="Video-to-ASCII-Art" />
+    <meta property="og:description" content="Turn videos into ASCII pixel art" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://collidingscopes.github.io/ascii/" />
+    <meta property="og:image" content="https://collidingscopes.github.io/ascii/assets/metro.png">
+    <meta property="og:image:type" content="image/png" >
+    <meta property="og:image:width" content="1280" >
+    <meta property="og:image:height" content="720" >
+  
+    <link rel="icon" href="assets/siteFavicon3.png">
+    <link rel="apple-touch-icon" href="assets/siteFavicon3.png">
+
+</head>
+
+<body>
+
+    <div id="gui"></div>
+
+    <div id="canvasDiv">
+
+        <div id="effectWidthDiv">
+            <pre><span class="tableText" id="effectWidthLabel">Effect Width</span><br><input class="input-number-noSpinners" type="range" id="effectWidthInput" value="50" min="0" max="100"></pre>
+        </div>
+
+        <canvas id="canvas" class=""></canvas>
+        <video id="webcamVideo" class=" hidden" playsinline></video>
+        <video id="userVideo" class=" hidden" loop muted playsinline></video>
+        <video id="defaultVideo" class=" hidden" width="480px" height="848px" loop muted playsinline>
+            <source src="assets/waves.mp4" type="video/mp4" />
+        </video>
+
+        <canvas id="canvas-video" class=" hidden"></canvas>
+        <canvas id="canvas-video-pixel" class=" hidden"></canvas>
+    </div>
+
+    <table id="buttonTable">
+        <tr>
+            <td>
+                <label for="fileInput" class="custom-file-upload" id="fileInputLabel">
+                    <i class="fa fa-cloud-upload"></i> Upload video
+                </label>
+                <input type="file" id="fileInput" accept="video/*, image/*">
+            </td>
+
+            <td>
+                <button id="useWebcamButton">Use Webcam</button>
+            </td>
+        </tr>
+    </table>
+
+    <div id="videoRecordingMessageDiv" class="hidden sticky-bottom">
+        Video recording underway. Press menu button or "v" to stop. The video will be saved to your downloads folder afterwards.
+    </div>
+
+</body>
+
+<script src="tRexCam.js"></script>
+<script src="mp4-muxer-main/build/mp4-muxer.js"></script>
+
+</html>
