@@ -1,12 +1,15 @@
 /*
 To do:
-button to reset the canvas back to bg color entirely (clear canvas)
-GUI menu for color range, trail opacity, trail strength (opacity of bg color on each frame), speed, lum threshold, etc...
-Dynamic background color in GUI
-Use clear interval where relevant (replace the cancel animation frame)
 Improve performance so that animationfps can be increased
 - Can other thresholding / filtering be applied to reduce the number of pixels which need to be analysed?
-Option to use the actual colors from the video / more natural palette
+Option to use more natural palette?
+Colours based on shader or background gradient?
+Add some visual glitches / noise / randomness
+shortcut hotkeys
+Adjustable max canvas width?
+Put neon pixel color inputs into a folder (auto-hide if Actual colors are selected) 
+Are user videos being duplicated? Multiple console calls after many videos are uploaded in a row
+Try out some ascii videos as input -- produces an interesting effect
 */
 
 var webcamVideo = document.getElementById('webcamVideo');
@@ -18,18 +21,15 @@ var canvas = document.getElementById("canvas");
 var ctx = canvas.getContext("2d");
 
 //Canvas for raw still images from video
-const canvasRaw = document.getElementById('canvas-video')
+const canvasRaw = document.getElementById('canvas-video');
 const ctx2 = canvasRaw.getContext("2d", {
     willReadFrequently: true,
 });
 
-//canvas for pixelated grayscale images
-const canvasPixel = document.getElementById('canvas-video-pixel')
-const ctx3 = canvasPixel.getContext("2d");
+var maxCanvasWidth = 720;
 
 var webcamAspectRatio = 1;
-var webcamVideoMaxWidth = 1080;
-var resizedWebcamWidth = Math.min(webcamVideoMaxWidth,Math.floor(window.innerWidth));
+var resizedWebcamWidth = Math.min(maxCanvasWidth,Math.floor(window.innerWidth));
 var resizedWebcamHeight = Math.round(resizedWebcamWidth / webcamAspectRatio);
 
 var defaultVideoWidth = 480;
@@ -37,15 +37,10 @@ var defaultVideoHeight = 848;
 var canvasWidth = defaultVideoWidth;
 var canvasHeight = defaultVideoHeight;
 
-var maxCanvasWidth = 1080;
-
-var pixelSize;
-var numCols;
-var numRows;
-var alpha=1;
-
 canvas.width = canvasWidth;
 canvas.height = canvasHeight;
+
+var videoType = "Default";
 
 var effectWidthInput = document.getElementById("effectWidthInput");
 effectWidthInput.style.width = canvasWidth;
@@ -53,24 +48,8 @@ var effectWidth = Number(effectWidthInput.value)/100;
 effectWidthInput.addEventListener("change",refresh);
 var effectWidthLabel = document.getElementById("effectWidthLabel");
 
-var videoPixels = [];
-var grayscaleDataArray = [];
-
-var fontFamily = "Courier New";
-var fontSize;
-//ctx.font;
-
- //this defines the character set. ordered by darker to lighter colour
-const gradient = "____``..--^^~~<>??123456789%%&&@@";
-//const gradient = "_______.:!/r(l1Z4H9W8$@";
-//const gradient =  "`.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@"
-//const gradient =  "`.-':_,^=;<+!rc*/z?sTv7(|Fi{C}fI31tu[neoZ5xjya]2EwqkP6h94VpOGbUKXHm8R#$Bg0NW%&@"
-const preparedGradient = gradient.replaceAll('_', '\u00A0')
-
-var randomColumnArray = [];
-var startingRowArray = [];
-
 var animationRequest;
+var animationInterval;
 var playAnimationToggle = false;
 var counter = 0;
 var webcamStream;
@@ -84,7 +63,7 @@ var videoRecordInterval;
 var videoEncoder;
 var muxer;
 var mobileRecorder;
-var videofps = 12;
+var videofps = 15;
 var frameNumber = 0;
 
 var animationfps = 15;
@@ -111,39 +90,16 @@ console.log("isSafari: "+isSafari+", isFirefox: "+isFirefox+", isIOS: "+isIOS+",
 
 //CREATE USER GUI MENU
 var obj = {
-    backgroundColor: "#080c37",
-    backgroundGradient: true,
-    backgroundSaturation: 60,
-    fontColor: "#c7205b",
-    fontColor2: "#0032ff",
-    fontSizeFactor: 3,
-    pixelSizeFactor: 70,
-    threshold: 30,
-    textInput: "wavesand",
-    randomness: 15,
-    invert: false,
-    animationType: 'Random Text',
+    threshold: 20,
+    backgroundColor: "#000000",
+    colorType: 'Neon',
+    pixelColor: '#1c20dd',
+    colorRange: 90,
+    colorRandomness: 100,
+    pixelOpacity: 80,
+    trailPower: 80,
 };
 
-var videoType = "Default";
-var animationType = obj.animationType;
-
-var backgroundColor = obj.backgroundColor;
-var backgroundRGB = hexToRgb(backgroundColor)
-var backgroundHue = getHueFromHex(backgroundColor);
-var backgroundSaturation = obj.backgroundSaturation;
-
-var backgroundGradient = obj.backgroundGradient;
-var fontSizeFactor = obj.fontSizeFactor;
-var pixelSizeFactor = obj.pixelSizeFactor;
-var fontColor = obj.fontColor;
-var fontHue = getHueFromHex(fontColor);
-var fontColor2 = obj.fontColor2;
-
-var threshold = obj.threshold/100;
-var textInput = obj.textInput;
-var randomness = obj.randomness/100;
-var invertToggle = obj.invert;
 
 var gui = new dat.gui.GUI({ autoPlace:false });
 gui.close();
@@ -151,7 +107,8 @@ var guiOpenToggle = false;
 
 obj['selectVideo'] = function () {
     videoType = "Select Video";
-    fileInput.click();
+    changeVideoType();
+    //fileInput.click();
 };
 gui.add(obj, 'selectVideo').name('Upload Video');
 
@@ -161,20 +118,14 @@ obj['useWebcam'] = function () {
 };
 gui.add(obj, 'useWebcam').name('Use Webcam');
 
-gui.addColor(obj, "backgroundColor").name("Background Color").onFinishChange(refresh);
-gui.add(obj,"backgroundGradient").name('Bg Gradient?').onChange(refresh);
-gui.add(obj, "backgroundSaturation").min(0).max(100).step(1).name('Bg Saturation').onChange(refresh);
-gui.addColor(obj, "fontColor").name("Font Color").onFinishChange(refresh);
-gui.addColor(obj, "fontColor2").name("Font Color2").onFinishChange(refresh);
-
-gui.add(obj, "fontSizeFactor").min(0).max(10).step(1).name('Font Size Factor').onChange(refresh);
-gui.add(obj, "pixelSizeFactor").min(10).max(200).step(1).name('Resolution').onChange(refresh);
-gui.add(obj, "threshold").min(0).max(95).step(1).name('Threshold').onChange(refresh);
-gui.add(obj,"invert").name('Invert?').onChange(refresh);
-gui.add(obj, "randomness").min(0).max(100).step(1).name('Randomness').onChange(refresh);
-
-gui.add(obj, 'animationType', [ 'Random Text', 'User Text'] ).name('Text Type').onChange(refresh);
-gui.add(obj, "textInput").onFinishChange(refresh);
+gui.add(obj, "threshold").min(5).max(50).step(1).name('Threshold');
+gui.addColor(obj, "backgroundColor").name("Background Color");
+gui.add(obj, 'colorType', [ 'Neon', 'Actual'] ).name('Color Type');
+gui.addColor(obj, "pixelColor").name("Pixel Color").onFinishChange(updatePixelHue);
+gui.add(obj, "colorRange").min(0).max(100).step(1).name('ColorRange');
+gui.add(obj, "colorRandomness").min(0).max(360).step(1).name('ColorRandomness');
+gui.add(obj, "pixelOpacity").min(0).max(100).step(1).name('Pixel Opacity');
+gui.add(obj, "trailPower").min(0).max(100).step(1).name('Trail Power');
 
 obj['pausePlay'] = function () {
     togglePausePlay();
@@ -207,73 +158,83 @@ useWebcamButton.addEventListener("click",function(){
 var currentLumArray = [];
 var previousLumArray = [];
 var keyPixelArray = [];
-var counter = 0;
-var lumThreshold = 15;
 
-//turn video input into still images, and then into pixelated grayscale values
-const render = (ctx) => {
-    if (canvasWidth && canvasHeight) {
+var pixelData;
+var pixels;
 
-        //choose video feed
-        if(videoType == "Webcam"){
-            ctx2.drawImage(webcamVideo, 0, 0, canvasWidth, canvasHeight);
-        } else if(videoType == "Select Video"){
-            ctx2.drawImage(userVideo, 0, 0, canvasWidth, canvasHeight);
-        }  else if(videoType == "Default"){
-            ctx2.drawImage(defaultVideo, 0, 0, canvasWidth, canvasHeight);
-        }
+var pixelColorHue = getHueFromHex(obj.pixelColor);
 
-        /*
-        //ocassionally reset the entire canvas back to background color
-        if(counter==0 || counter%100 == 0){
-            ctx.fillStyle = "black";
-            ctx.globalAlpha = 1;
-            ctx.fillRect(0,0,canvasWidth,canvasHeight);
-        }
-        */
+function updatePixelHue(){
+    pixelColorHue = getHueFromHex(obj.pixelColor);
+    console.log("pixel color hue: "+pixelColorHue);
+}
 
-        //get closer to background color each frame (to make trails less intense)
-        ctx.fillStyle = "black";
-        ctx.globalAlpha = 0.1;
+//get still image from video input, then detect / draw pixels that are changing vs. previous frame
+function render(){
+
+    //choose video feed
+    if(videoType == "Webcam"){
+        ctx2.drawImage(webcamVideo, 0, 0, canvasWidth, canvasHeight);
+    } else if(videoType == "Select Video"){
+        ctx2.drawImage(userVideo, 0, 0, canvasWidth, canvasHeight);
+    }  else if(videoType == "Default"){
+        ctx2.drawImage(defaultVideo, 0, 0, canvasWidth, canvasHeight);
+    }
+
+    pixelData = ctx2.getImageData(0, 0, canvasWidth, canvasHeight);
+    pixels = pixelData.data;
+
+    //start with blank canvas on the first frame
+    if(counter==0){
+        ctx.fillStyle = obj.backgroundColor;
+        ctx.globalAlpha = 1;
         ctx.fillRect(0,0,canvasWidth,canvasHeight);
+    }
 
-        var pixelData = ctx2.getImageData(0, 0, canvasWidth, canvasHeight);
-        var pixels = pixelData.data;
+    //get closer to background color each frame (to make trails less intense)
+    ctx.fillStyle = obj.backgroundColor;
+    ctx.globalAlpha = 1 - (obj.trailPower/100);
+    ctx.fillRect(0,0,canvasWidth,canvasHeight);
 
-        for(i=0; i<canvasHeight; i++){
-            
-            if(counter==0){
-                previousLumArray[i] = [];
+    for(i=0; i<canvasHeight; i++){
+        
+        if(counter==0){
+            previousLumArray[i] = [];
+        }
+
+        for(j=0; j<canvasWidth; j++){
+
+            var currentPixelDataValue = (i * canvasWidth + j) * 4;
+            var r = pixels[currentPixelDataValue];
+            var g = pixels[currentPixelDataValue+1];
+            var b = pixels[currentPixelDataValue+2];
+
+            var currentLum = 0.3 * r + 0.6 * g + 0.1 * b;
+            var previousLum;
+
+            if(counter == 0){
+                previousLum = currentLum;
+            } else {
+                previousLum = previousLumArray[i][j];
             }
 
-            for(j=0; j<canvasWidth; j++){
+            previousLumArray[i][j] = currentLum;
 
-                var currentPixelDataValue = (i * canvasWidth + j) * 4;
-                var r = pixels[currentPixelDataValue];
-                var g = pixels[currentPixelDataValue+1];
-                var b = pixels[currentPixelDataValue+2];
+            var lumDelta = Math.abs(currentLum - previousLum);
+            //var grayValue = Math.min(1, lumDelta / 10) * 255;
 
-                var currentLum = 0.3 * r + 0.6 * g + 0.1 * b;
-                var previousLum;
-
-                if(counter == 0){
-                    previousLum = currentLum;
-                } else {
-                    previousLum = previousLumArray[i][j];
+            if(lumDelta > obj.threshold){
+                //ctx.fillStyle = "rgb("+grayValue+","+grayValue+","+grayValue+")";
+                //ctx.fillStyle = "hsl("+counter*2+",80%,50%)";
+                if(obj.colorType == "Neon"){
+                    var currentHue = ( pixelColorHue + (Math.sin(counter/5)*obj.colorRange) + Math.random()*obj.colorRandomness - obj.colorRandomness/2 ) % 360;
+                    ctx.fillStyle = "hsl("+currentHue+",80%,50%)";
+                    //ctx.fillStyle = "hsl("+pixelColorHue+",80%,50%)";
+                } else if(obj.colorType == "Actual"){
+                    ctx.fillStyle = "rgb("+r+","+g+","+b+")";
                 }
-
-                previousLumArray[i][j] = currentLum;
-
-                var lumDelta = Math.abs(currentLum - previousLum);
-                //var grayValue = Math.min(1, lumDelta / 10) * 255;
-
-                if(lumDelta > lumThreshold){
-                    //ctx.fillStyle = "rgb("+grayValue+","+grayValue+","+grayValue+")";
-                    ctx.fillStyle = "hsl("+counter*2+",80%,50%)";
-                    ctx.globalAlpha = 0.8;
-                    ctx.fillRect(j,i,1,1);
-                }
-
+                ctx.globalAlpha = obj.pixelOpacity/100;
+                ctx.fillRect(j,i,1,1);
             }
 
         }
@@ -285,26 +246,10 @@ const render = (ctx) => {
 //animation loop to go frame by frame
 function loop(){
 
-    if(counter==0){
-        console.log("start animation, first frame");
-    }
     if(playAnimationToggle){
         
-        render(ctx);
+        render();
         counter++;
-
-        /*
-        if(effectWidth < 1){
-            //draw the chosen video onto the final canvas
-            if(videoType == "Webcam"){
-                ctx.drawImage(webcamVideo, 0, 0, canvasWidth, canvasHeight);
-            } else if(videoType == "Select Video"){
-                ctx.drawImage(userVideo, 0, 0, canvasWidth, canvasHeight);
-            }  else if(videoType == "Default"){
-                ctx.drawImage(defaultVideo, 0, 0, canvasWidth, canvasHeight);
-            }
-        }
-        */
 
         if(recordVideoState == true){
             renderCanvasToVideoFrameAndEncode({
@@ -316,16 +261,17 @@ function loop(){
             frameNumber++;
         }
         
-        //animationRequest = requestAnimationFrame(loop);
     }
 }
 
 //HELPER FUNCTIONS BELOW
 
+/*
 function selectVideo(){
     videoType = "Select Video";
     fileInput.click();
 }
+*/
 
 function updateGUIState(){
     if(guiOpenToggle){
@@ -340,45 +286,7 @@ function refresh(){
     console.log("canvas width/height: "+canvasWidth+", "+canvasHeight);
 
     document.getElementById("canvasDiv").setAttribute("style", "width: "+canvasWidth+"px;");
-    //effectWidthInput.style.width = canvasWidth;
-    effectWidth = Number(effectWidthInput.value)/100;
-    effectWidthLabel.innerHTML = "Effect Width: "+Math.round(effectWidth*100)+"%";
 
-    animationType = obj.animationType;
-    fontSizeFactor = obj.fontSizeFactor;
-    pixelSizeFactor = obj.pixelSizeFactor;
-    pixelSize = Math.ceil(Math.min(canvasWidth,canvasHeight)/pixelSizeFactor);
-    numCols = Math.ceil(Math.ceil(canvasWidth / pixelSize) * effectWidth);
-    numRows = Math.ceil(canvasHeight / pixelSize);
-    fontSize = pixelSize/0.65;
-    ctx.font = fontSize+"px "+fontFamily;
-
-    fontColor = obj.fontColor;
-    fontColor2 = obj.fontColor2;
-    fontHue = getHueFromHex(fontColor);
-    
-    backgroundColor = obj.backgroundColor;
-    backgroundRGB = hexToRgb(backgroundColor)
-    backgroundHue = getHueFromHex(backgroundColor);
-    backgroundSaturation = obj.backgroundSaturation;;
-    
-    backgroundGradient = obj.backgroundGradient;
-    threshold = obj.threshold/100;
-    textInput = obj.textInput;
-    counter = 0;
-    randomness = obj.randomness/100;
-    invertToggle = obj.invert;
-    randomColumnArray = [];
-    startingRowArray = [];
-
-    for(var i=0; i<numCols; i++){
-        if(Math.random() < randomness){
-            randomColumnArray[i] = true;
-            startingRowArray[i] = Math.floor( Math.random() * numRows );
-        } else {
-            randomColumnArray[i] = false;
-        }
-    }
 }
 
 function togglePausePlay(){
@@ -387,7 +295,7 @@ function togglePausePlay(){
         if(videoType == "Webcam"){
             startWebcam();
         } else if(videoType == "Select Video"){
-            refresh();
+            //refresh();
             userVideo.play();
             playAnimationToggle = true;
             //animationRequest = requestAnimationFrame(loop);
@@ -409,20 +317,23 @@ function changeVideoType(){
 
     } else if(videoType == "Select Video"){
         console.log("select video file");
-        selectVideo();
+        //selectVideo();
+        fileInput.click();
 
     } else if(videoType == "Default"){
         startDefaultVideo();
     }
 
-    refresh();
+    counter = 0;
+    //refresh();
 
 }
 
 function startDefaultVideo(){
     if(playAnimationToggle==true){
         playAnimationToggle = false;
-        cancelAnimationFrame(animationRequest);
+        //cancelAnimationFrame(animationRequest);
+        clearInterval(animationInterval);
         console.log("cancel animation");
     }
 
@@ -435,6 +346,9 @@ function startDefaultVideo(){
     canvasRaw.height = canvasHeight;
 
     defaultVideo.play();
+    userVideo.pause();
+    webcamVideo.pause();
+
     playAnimationToggle = true;
     //animationRequest = requestAnimationFrame(loop);
     animationInterval = setInterval(loop,1000/animationfps);
@@ -444,9 +358,14 @@ function startWebcam() {
 
     if(playAnimationToggle==true){
         playAnimationToggle = false;
-        cancelAnimationFrame(animationRequest);
+        //cancelAnimationFrame(animationRequest);
+        clearInterval(animationInterval);
+
         console.log("cancel animation");
     }
+
+    userVideo.pause();
+    defaultVideo.pause();
 
     navigator.mediaDevices.getUserMedia({
         audio: false,
@@ -467,7 +386,7 @@ function startWebcam() {
         }
         console.log("Aspect Ratio: "+webcamAspectRatio);
 
-        resizedWebcamWidth = Math.min(webcamVideoMaxWidth,Math.floor(window.innerWidth));
+        resizedWebcamWidth = Math.min(maxCanvasWidth,Math.floor(window.innerWidth));
         resizedWebcamHeight = Math.round(resizedWebcamWidth / webcamAspectRatio);
     
         canvasWidth = resizedWebcamWidth;
@@ -478,7 +397,7 @@ function startWebcam() {
         canvasRaw.width = canvasWidth;
         canvasRaw.height = canvasHeight;
 
-        refresh();
+        //refresh();
 
         playAnimationToggle = true;
         //animationRequest = requestAnimationFrame(loop);
@@ -490,35 +409,21 @@ function startWebcam() {
 
 }
 
-var localStream;
-function stopVideo(){
-
-    if(playAnimationToggle==true){
-        playAnimationToggle = false;
-        cancelAnimationFrame(animationRequest);
-        console.log("cancel animation");
-    }
-
-    webcamVideo.pause();
-    userVideo.pause();
-    defaultVideo.pause();
-
-    if(localStream == null){
-    } else {
-        localStream.getVideoTracks()[0].stop();
-    }
-}
-
 var fileInput = document.getElementById("fileInput");
 fileInput.addEventListener('change', (e) => {
 
+    stopVideo();
+
     if(playAnimationToggle==true){
         playAnimationToggle = false;
-        cancelAnimationFrame(animationRequest);
+        //cancelAnimationFrame(animationRequest);
+        clearInterval(animationInterval);
+
         console.log("cancel animation");
     }
 
     videoType = "Select Video";
+    counter = 0;
 
     const file = e.target.files[0];
     const url = URL.createObjectURL(file);
@@ -542,13 +447,37 @@ fileInput.addEventListener('change', (e) => {
     
     setTimeout(function(){
         userVideo.play();
-        refresh();
+        defaultVideo.pause();
+        webcamVideo.pause();
+
+        //refresh();
         playAnimationToggle = true;
         //animationRequest = requestAnimationFrame(loop);
         animationInterval = setInterval(loop,1000/animationfps);
     },2000);
 
 });
+
+var localStream;
+function stopVideo(){
+
+    if(playAnimationToggle==true){
+        playAnimationToggle = false;
+        //cancelAnimationFrame(animationRequest);
+        clearInterval(animationInterval);
+
+        console.log("cancel animation");
+    }
+
+    webcamVideo.pause();
+    userVideo.pause();
+    defaultVideo.pause();
+
+    if(localStream == null){
+    } else {
+        localStream.getVideoTracks()[0].stop();
+    }
+}
 
 function getAverageColor(chosenPixels) {
     var r = 0;
@@ -909,5 +838,5 @@ setTimeout(function(){
 }
 
 //MAIN METHOD
-refresh();
+//refresh();
 startDefaultVideo();
